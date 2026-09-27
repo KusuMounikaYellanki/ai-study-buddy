@@ -132,10 +132,10 @@ async def ai_token_stream(prompt: str):
                             chunk = json.loads(line)
                             yield {"data": chunk.get("response", "")}
     except (httpx.HTTPError, httpx.TimeoutException) as e:
-        print(f"[ai_token_stream ERROR - HTTP/Timeout] {e}")
+        print(f"[ai_token_stream ERROR - HTTP/Timeout] {e}", flush=True)
         yield {"data": "⚠️ Sorry, the AI service is currently unavailable. Please try again in a moment."}
     except Exception as e:
-        print(f"[ai_token_stream ERROR - Unexpected] {type(e).__name__}: {e}")
+        print(f"[ai_token_stream ERROR - Unexpected] {type(e).__name__}: {e}", flush=True)
         yield {"data": "⚠️ Something went wrong while generating a response. Please try again."}
 
 
