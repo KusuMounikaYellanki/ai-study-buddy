@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Study Buddy</title>
+
+<style>
+  * {
+    box-sizing: border-box;
+  }
+
+  :root {
+    --primary: #4f46e5;
+    --primary-dark: #4338ca;
+    --primary-light: #eef2ff;
+    --background: #f5f7fb;
+    --card: #ffffff;
+    --text: #172033;
+    --muted: #667085;
+    --border: #e4e7ec;
+    --success: #16a34a;
+    --ai-bg: #f8f9fc;
+  }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--background);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* Header */
+  .topbar {
+    background: white;
+    border-bottom: 1px solid var(--border);
+    padding: 18px 32px;
+  }
+
+  .topbar-inner {
+    max-width: 1100px;
+    margin: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .brand-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 12px;
+    background: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+  }
+
+  .brand h1 {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+  }
+
+  .brand p {
+    margin: 2px 0 0;
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.8rem;
+    color: var(--success);
+    background: #f0fdf4;
+    padding: 7px 12px;
+    border-radius: 20px;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    background: var(--success);
+    border-radius: 50%;
+  }
+
+  /* Main */
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 32px 20px 40px;
+  }
+
+  .hero {
+    margin-bottom: 26px;
+  }
+
+  .hero h2 {
+    margin: 0;
+    font-size: 1.7rem;
+    letter-spacing: -0.5px;
+  }
+
+  .hero p {
+    margin: 7px 0 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 22px;
+    align-items: stretch;
+  }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    box-shadow: 0 4px 18px rgba(16, 24, 40, 0.05);
+  }
+
+  .card-header {
+    padding: 20px 20px 14px;
+  }
+
+  .card-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .card-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+
+  .card-title h3 {
+    margin: 0;
+    font-size: 0.98rem;
+  }
+
+  .card-title p {
+    margin: 3px 0 0;
+    color: var(--muted);
+    font-size: 0.76rem;
+  }
+
+  /* Notes */
+  .notes-card {
+    padding-bottom: 18px;
+  }
+
+  .notes-content {
+    padding: 0 20px;
+  }
+
+  textarea {
+    width: 100%;
+    min-height: 300px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 0.88rem;
+    line-height: 1.5;
+    color: var(--text);
+    background: #fcfcfd;
+  }
+
+  textarea:focus,
+  input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+  }
+
+  textarea::placeholder,
+  input::placeholder {
+    color: #98a2b3;
+  }
+
+  .upload-btn {
+    width: 100%;
+    margin-top: 12px;
+    padding: 11px 18px;
+    border: none;
+    border-radius: 10px;
+    background: var(--primary);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 0.88rem;
+    transition: 0.2s;
+  }
+
+  .upload-btn:hover {
+    background: var(--primary-dark);
+  }
+
+  .upload-btn:active {
+    transform: translateY(1px);
+  }
+
+  #status {
+    min-height: 18px;
+    margin-top: 9px;
+    font-size: 0.78rem;
+  }
+
+  /* Chat */
+  .chat-card {
+    display: flex;
+    flex-direction: column;
+    height: 520px;
+    min-height: 520px;
+  }
+
+  .chat-header {
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .new-chat-btn {
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--primary);
+    font-weight: 600;
+    font-size: 0.78rem;
+    padding: 7px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  .new-chat-btn:hover {
+    background: var(--primary-light);
+  }
+
+  /* Chat body: sidebar + conversation */
+  .chat-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+  }
+
+  .chat-sidebar {
+    width: 150px;
+    flex-shrink: 0;
+    align-self: flex-start;
+    max-height: 100%;
+    border-right: 1px solid var(--border);
+    background: #fafbfd;
+    overflow-y: auto;
+    padding: 10px 8px;
+  }
+
+  .chat-empty-hint {
+    color: #98a2b3;
+    font-size: 0.72rem;
+    text-align: center;
+    padding: 16px 6px;
+  }
+
+  .chat-item {
+    padding: 8px 9px;
+    border-radius: 8px;
+    font-size: 0.76rem;
+    color: var(--muted);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 3px;
+  }
+
+  .chat-item:hover {
+    background: var(--primary-light);
+  }
+
+  .chat-item.active {
+    background: var(--primary);
+    color: white;
+    font-weight: 600;
+  }
+
+  .chat-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #chatBox {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 22px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  /* Welcome */
+  .welcome {
+    margin: auto;
+    text-align: center;
+    max-width: 380px;
+    color: var(--muted);
+  }
+
+  .welcome-icon {
+    width: 58px;
+    height: 58px;
+    margin: 0 auto 14px;
+    border-radius: 16px;
+    background: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 27px;
+  }
+
+  .welcome h3 {
+    margin: 0 0 6px;
+    color: var(--text);
+    font-size: 1rem;
+  }
+
+  .welcome p {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.5;
+  }
+
+  /* Chat bubbles */
+  .bubble {
+    max-width: 78%;
+    padding: 11px 14px;
+    border-radius: 15px;
+    line-height: 1.5;
+    font-size: 0.88rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .bubble-user {
+    align-self: flex-end;
+    background: var(--primary);
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+
+  .bubble-ai {
+    align-self: flex-start;
+    background: var(--ai-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+
+  /* Typing */
+  .typing-dots {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 18px;
+  }
+
+  .typing-dots span {
+    width: 6px;
+    height: 6px;
+    background: #98a2b3;
+    border-radius: 50%;
+    animation: bounce 1.2s infinite ease-in-out;
+  }
+
+  .typing-dots span:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  .typing-dots span:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
+  @keyframes bounce {
+    0%, 60%, 100% {
+      transform: translateY(0);
+      opacity: 0.5;
+    }
+
+    30% {
+      transform: translateY(-4px);
+      opacity: 1;
+    }
+  }
+
+  /* Chat input */
+  .chat-input-area {
+    padding: 14px 16px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .chat-input-row {
+    display: flex;
+    gap: 9px;
+    align-items: center;
+  }
+
+  .chat-input-row input {
+    flex: 1;
+    min-width: 0;
+    height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    font-family: inherit;
+    font-size: 0.87rem;
+    background: #fcfcfd;
+  }
+
+  .send-btn {
+    height: 44px;
+    padding: 0 20px;
+    border: none;
+    border-radius: 11px;
+    background: var(--primary);
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.2s;
+  }
+
+  .send-btn:hover {
+    background: var(--primary-dark);
+  }
+
+  .send-btn:disabled,
+  .upload-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  .suggestions {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .suggestion {
+    border: 1px solid var(--border);
+    background: white;
+    color: var(--muted);
+    padding: 6px 10px;
+    border-radius: 20px;
+    font-size: 0.72rem;
+    cursor: pointer;
+  }
+
+  .suggestion:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--primary-light);
+  }
+
+  /* Scrollbar */
+  #chatBox::-webkit-scrollbar,
+  .chat-sidebar::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  #chatBox::-webkit-scrollbar-thumb,
+  .chat-sidebar::-webkit-scrollbar-thumb {
+    background: #d0d5dd;
+    border-radius: 10px;
+  }
+
+  /* Responsive */
+  @media (max-width: 800px) {
+    .topbar {
+      padding: 15px 18px;
+    }
+
+    .status-badge {
+      display: none;
+    }
+
+    .container {
+      padding: 24px 14px;
+    }
+
+    .layout {
+      grid-template-columns: 1fr;
+    }
+
+    textarea {
+      min-height: 220px;
+    }
+
+    .chat-card {
+      min-height: 500px;
+    }
+
+    .chat-sidebar {
+      width: 110px;
+    }
+  }
+
+  @media (max-width: 500px) {
+    .hero h2 {
+      font-size: 1.4rem;
+    }
+
+    .chat-input-row {
+      gap: 6px;
+    }
+
+    .send-btn {
+      padding: 0 15px;
+    }
+
+    .bubble {
+      max-width: 88%;
+    }
+
+    .chat-body {
+      flex-direction: column;
+    }
+
+    .chat-sidebar {
+      width: 100%;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+
+    .chat-item {
+      margin-bottom: 0;
+    }
+  }
+</style>
+</head>
+
+<body>
+
+<!-- Header -->
+<header class="topbar">
+  <div class="topbar-inner">
+
+    <div class="brand">
+      <div class="brand-icon">📚</div>
+
+      <div>
+        <h1>AI Study Buddy</h1>
+        <p>Your personal AI-powered study assistant</p>
+      </div>
+    </div>
+
+    <div class="status-badge">
+      <span class="status-dot"></span>
+      Study Buddy Online
+    </div>
+
+  </div>
+</header>
+
+
+<!-- Main -->
+<main class="container">
+
+  <div class="hero">
+    <h2>What would you like to study?</h2>
+    <p>Upload your notes and let your AI Study Buddy help you learn.</p>
+  </div>
+
+
+  <div class="layout">
+
+    <!-- Notes Card -->
+    <section class="card notes-card">
+
+      <div class="card-header">
+        <div class="card-title">
+
+          <div class="card-icon">
+            📝
+          </div>
+
+          <div>
+            <h3>Study Notes</h3>
+            <p>Add the notes you want to study</p>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="notes-content">
+
+        <textarea
+          id="notesInput"
+          rows="8"
+          placeholder="Paste your study notes here...
+
+"></textarea>
+
+        <button class="upload-btn" onclick="uploadNotes()">
+          Upload Notes
+        </button>
+
+        <div id="status"></div>
+
+      </div>
+
+    </section>
+
+
+    <!-- Chat Card -->
+    <section class="card chat-card">
+
+      <div class="card-header chat-header">
+
+        <div class="card-title">
+
+          <div class="card-icon">
+            🤖
+          </div>
+
+          <div>
+            <h3>Study Chat</h3>
+            <p>Ask questions about your notes</p>
+          </div>
+
+        </div>
+
+        <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
+        <!-- <button class="new-chat-btn" onclick="clearAllHistory()" style="color: #dc2626;">🗑 Clear All</button> -->
+
+      </div>
+
+      <div class="chat-body">
+
+        <!-- Chat history sidebar -->
+        <div class="chat-sidebar" id="chatList"></div>
+
+        <div class="chat-content">
+
+          <!-- Chat messages -->
+          <div id="chatBox">
+
+            <div class="welcome">
+
+              <div class="welcome-icon">
+                💡
+              </div>
+
+              <h3>Ready to help you study!</h3>
+
+              <p>
+                Upload your notes and ask me anything about them.
+                You can also ask for flashcards or a quiz.
+              </p>
+
+            </div>
+
+          </div>
+
+
+          <!-- Chat input -->
+          <div class="chat-input-area">
+
+            <div class="chat-input-row">
+
+              <input
+                id="chatInput"
+                type="text"
+                placeholder="Ask a question about your notes..."
+              />
+
+              <button
+                id="sendBtn"
+                class="send-btn"
+                onclick="sendMessage()"
+              >
+                Send
+              </button>
+
+            </div>
+
+            <div class="suggestions">
+
+              <button
+                class="suggestion"
+                onclick="setQuestion('Quiz me on my notes')"
+              >
+                🧠 Quiz me
+              </button>
+
+              <button
+                class="suggestion"
+                onclick="setQuestion('Create flashcards from my notes')"
+              >
+                🗂️ Flashcards
+              </button>
+
+              <button
+                class="suggestion"
+                onclick="setQuestion('Summarize my notes')"
+              >
+                📋 Summarize
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </div>
+
+</main>
+
+
+<script>
+
+const STORAGE_KEY = 'studyBuddyChats';
+const SESSION_KEY = 'studyBuddySessionId';
+let sessionId = localStorage.getItem(SESSION_KEY);
+if (!sessionId) {
+  sessionId = crypto.randomUUID();
+  localStorage.setItem(SESSION_KEY, sessionId);
+}
+
+let chats = {};
+let currentChatId = null;
+
+function loadChats() {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  chats = raw ? JSON.parse(raw) : {};
+}
+
+function saveChats() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(chats));
+}
+
+function newChat() {
+  currentChatId = null; // no chat created yet — just show empty state
+  renderChatList();
+  renderChatBox();
+}
+
+async function clearAllHistory() {
+  if (!confirm("This will delete all your chat history and uploaded notes. Continue?")) return;
+  await fetch(`/clear-notes?session_id=${encodeURIComponent(sessionId)}`, { method: 'DELETE' });
+  localStorage.removeItem('studyBuddyChats');
+  location.reload();
+}
+
+function switchChat(id) {
+  currentChatId = id;
+  renderChatList();
+  renderChatBox();
+}
+
+function renderChatList() {
+  const listEl = document.getElementById('chatList');
+  listEl.innerHTML = '';
+  const ids = Object.keys(chats).sort().reverse();
+
+  if (ids.length === 0) {
+    listEl.innerHTML = '<div class="chat-empty-hint">Your chats will appear here</div>';
+    return;
+  }
+
+  for (const id of ids) {
+    const item = document.createElement('div');
+    item.className = 'chat-item' + (id === currentChatId ? ' active' : '');
+    item.textContent = chats[id].title;
+    item.onclick = () => switchChat(id);
+    listEl.appendChild(item);
+  }
+}
+
+function renderChatBox() {
+  const chatBox = document.getElementById('chatBox');
+  chatBox.innerHTML = '';
+  const messages = chats[currentChatId]?.messages || [];
+
+  if (messages.length === 0) {
+    chatBox.innerHTML = `
+      <div class="welcome">
+        <div class="welcome-icon">💡</div>
+        <h3>Ready to help you study!</h3>
+        <p>Upload your notes and ask me anything about them. You can also ask for flashcards or a quiz.</p>
+      </div>
+    `;
+    return;
+  }
+
+  for (const msg of messages) {
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble ' + (msg.role === 'user' ? 'bubble-user' : 'bubble-ai');
+    bubble.textContent = msg.text;
+    chatBox.appendChild(bubble);
+  }
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+async function uploadNotes() {
+
+  const text = document.getElementById('notesInput').value.trim();
+
+  if (!text) {
+    return;
+  }
+
+  const status = document.getElementById('status');
+  const uploadBtn = document.querySelector('.upload-btn');
+
+  uploadBtn.disabled = true;
+
+  status.style.color = '#667085';
+  status.textContent = "Uploading and embedding notes...";
+
+  try {
+
+    const res = await fetch('/upload-notes', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ text, session_id: sessionId })
+    });
+
+    const data = await res.json();
+
+    status.style.color = '#16a34a';
+    status.textContent = '✓ Your notes are ready! Ask a question below.';
+
+    document.getElementById('notesInput').value = '';
+
+  } catch (error) {
+
+    status.style.color = '#dc2626';
+    status.textContent = '⚠️ Failed to upload notes. Please try again.';
+
+  } finally {
+
+    uploadBtn.disabled = false;
+
+  }
+}
+
+
+function sendMessage() {
+
+  if (!currentChatId) {
+    const id = 'chat-' + Date.now();
+    chats[id] = { title: 'New Chat', messages: [] };
+    currentChatId = id;
+  }
+
+  const input = document.getElementById('chatInput');
+  const sendBtn = document.getElementById('sendBtn');
+
+  const message = input.value.trim();
+
+  if (!message) {
+    return;
+  }
+
+  const chat = chats[currentChatId];
+
+  chat.messages.push({ role: 'user', text: message });
+  if (chat.messages.length === 1) {
+    chat.title = message.length > 22 ? message.slice(0, 22) + '…' : message;
+  }
+  saveChats();
+  renderChatList();
+
+  const chatBox = document.getElementById('chatBox');
+
+  // Remove welcome message
+  const welcome = chatBox.querySelector('.welcome');
+
+  if (welcome) {
+    welcome.remove();
+  }
+
+  // User message
+  const userBubble = document.createElement('div');
+
+  userBubble.className = 'bubble bubble-user';
+  userBubble.textContent = message;
+
+  chatBox.appendChild(userBubble);
+
+  // AI message
+  const aiBubble = document.createElement('div');
+
+  aiBubble.className = 'bubble bubble-ai';
+
+  aiBubble.innerHTML = `
+    <span class="typing-dots">
+      <span></span>
+      <span></span>
+      <span></span>
+    </span>
+  `;
+
+  chatBox.appendChild(aiBubble);
+
+  chatBox.scrollTop = chatBox.scrollHeight;
+
+  input.value = '';
+  input.disabled = true;
+  sendBtn.disabled = true;
+
+  let firstTokenReceived = false;
+  let fullResponse = '';
+  const thisChatId = currentChatId; // capture in case user switches mid-stream
+
+  const source = new EventSource(
+    `/chat?message=${encodeURIComponent(message)}&session_id=${encodeURIComponent(sessionId)}`
+  );
+
+  source.onmessage = (event) => {
+
+    if (!firstTokenReceived) {
+
+      aiBubble.textContent = '';
+      firstTokenReceived = true;
+
+    }
+
+    // Check whether user is currently near the bottom
+    const isNearBottom =
+      chatBox.scrollHeight -
+      chatBox.scrollTop -
+      chatBox.clientHeight < 100;
+
+    fullResponse += event.data;
+    aiBubble.textContent = fullResponse;
+
+    // Only auto-scroll if user is already near the bottom
+    if (isNearBottom) {
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+  };
+
+  source.onerror = () => {
+
+    if (!firstTokenReceived) {
+      aiBubble.textContent =
+        "⚠️ Something went wrong. Please try again.";
+      fullResponse = aiBubble.textContent;
+    }
+
+    source.close();
+
+    chats[thisChatId].messages.push({ role: 'ai', text: fullResponse });
+    saveChats();
+
+    input.disabled = false;
+    sendBtn.disabled = false;
+
+    input.focus();
+  };
+
+  // Detect completion after an idle period
+  let idleTimer;
+
+  source.addEventListener('message', () => {
+
+    clearTimeout(idleTimer);
+
+    idleTimer = setTimeout(() => {
+
+      source.close();
+
+      chats[thisChatId].messages.push({ role: 'ai', text: fullResponse });
+      saveChats();
+
+      input.disabled = false;
+      sendBtn.disabled = false;
+
+      input.focus();
+
+    }, 2000);
+
+  });
+}
+
+
+function setQuestion(question) {
+
+  const input = document.getElementById('chatInput');
+
+  input.value = question;
+  input.focus();
+
+}
+
+
+document
+  .getElementById('chatInput')
+  .addEventListener('keydown', (e) => {
+
+    if (e.key === 'Enter') {
+      sendMessage();
+    }
+
+  });
+
+// ---------- Init ----------
+loadChats();
+const existingIds = Object.keys(chats);
+if (existingIds.length === 0) {
+  newChat();
+} else {
+  currentChatId = existingIds.sort().reverse()[0];
+  renderChatList();
+  renderChatBox();
+}
+
+</script>
+
+</body>
+</html>
