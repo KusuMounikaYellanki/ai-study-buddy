@@ -976,6 +976,15 @@ function sendMessage() {
     }
   };
 
+    let responseSaved = false;
+
+  function saveAiResponse() {
+    if (responseSaved) return;   // guard: only ever save once per message
+    responseSaved = true;
+    chats[thisChatId].messages.push({ role: 'ai', text: fullResponse });
+    saveChats();
+  }
+
   source.onerror = () => {
 
     if (!firstTokenReceived) {
@@ -985,9 +994,8 @@ function sendMessage() {
     }
 
     source.close();
-
-    chats[thisChatId].messages.push({ role: 'ai', text: fullResponse });
-    saveChats();
+    clearTimeout(idleTimer);   // cancel the pending idle-timer save
+    saveAiResponse();
 
     input.disabled = false;
     sendBtn.disabled = false;
@@ -1005,9 +1013,7 @@ function sendMessage() {
     idleTimer = setTimeout(() => {
 
       source.close();
-
-      chats[thisChatId].messages.push({ role: 'ai', text: fullResponse });
-      saveChats();
+      saveAiResponse();
 
       input.disabled = false;
       sendBtn.disabled = false;
@@ -1042,14 +1048,9 @@ document
 
 // ---------- Init ----------
 loadChats();
-const existingIds = Object.keys(chats);
-if (existingIds.length === 0) {
-  newChat();
-} else {
-  currentChatId = existingIds.sort().reverse()[0];
-  renderChatList();
-  renderChatBox();
-}
+currentChatId = null;   // always start on a fresh, unsaved "New Chat" view
+renderChatList();
+renderChatBox();
 
 </script>
 
