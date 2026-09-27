@@ -11,6 +11,7 @@ import chromadb
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+import asyncio
 
 load_dotenv()
 app = FastAPI()
@@ -53,11 +54,14 @@ async def get_embedding(text: str) -> list[float]:
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             if AI_PROVIDER == "gemini":
-                response = await client.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_EMBED_MODEL}:embedContent?key={GEMINI_API_KEY}",
-                    json={"content": {"parts": [{"text": text}]}},
-                )
-                response.raise_for_status()
+                async def _call():
+                    r = await client.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_EMBED_MODEL}:embedContent?key={GEMINI_API_KEY}",
+                        json={"content": {"parts": [{"text": text}]}},
+                    )
+                    r.raise_for_status()
+                    return r
+                response = await call_with_retry(_call)
                 return response.json()["embedding"]["values"]
             else:
                 response = await client.post(
@@ -102,23 +106,29 @@ async def ai_token_stream(prompt: str):
     try:
         if AI_PROVIDER == "gemini":
             async with httpx.AsyncClient(timeout=30.0) as client:
-                async with client.stream(
-                    "POST",
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:streamGenerateContent?alt=sse&key={GEMINI_API_KEY}",
-                    json={"contents": [{"parts": [{"text": prompt}]}]},
-                ) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if line.startswith("data: "):
-                            payload = line[len("data: "):].strip()
-                            if not payload or payload == "[DONE]":
-                                continue
-                            try:
-                                chunk = json.loads(payload)
-                                text = chunk["candidates"][0]["content"]["parts"][0]["text"]
-                                yield {"data": text}
-                            except (KeyError, IndexError, json.JSONDecodeError):
-                                continue
+                for attempt in range(3):
+                    async with client.stream(
+                        "POST",
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:streamGenerateContent?alt=sse&key={GEMINI_API_KEY}",
+                        json={"contents": [{"parts": [{"text": prompt}]}]},
+                    ) as response:
+                        if response.status_code in (503, 429) and attempt < 2:
+                            print(f"[retry] Gemini attempt {attempt + 1} got {response.status_code}, retrying", flush=True)
+                            await asyncio.sleep(2 ** attempt)
+                            continue
+                        response.raise_for_status()
+                        async for line in response.aiter_lines():
+                            if line.startswith("data: "):
+                                payload = line[len("data: "):].strip()
+                                if not payload or payload == "[DONE]":
+                                    continue
+                                try:
+                                    chunk = json.loads(payload)
+                                    text = chunk["candidates"][0]["content"]["parts"][0]["text"]
+                                    yield {"data": text}
+                                except (KeyError, IndexError, json.JSONDecodeError):
+                                    continue
+                        break
         else:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 async with client.stream(
@@ -284,3 +294,19 @@ async def chat(request: Request, message: str, session_id: str):
     context_chunks = await retrieve_context(message, session_id)
     prompt = build_rag_prompt(message, context_chunks)
     return EventSourceResponse(ai_token_stream(prompt))
+
+async def call_with_retry(func, *args, max_retries=3, **kwargs):
+    """Retries a function on transient errors (503, timeouts) with increasing delay."""
+    last_error = None
+    for attempt in range(max_retries):
+        try:
+            return await func(*args, **kwargs)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (503, 429):  # overloaded or rate-limited
+                last_error = e
+                wait_time = 2 ** attempt  # 1s, 2s, 4s
+                print(f"[retry] Attempt {attempt + 1} failed with {e.response.status_code}, retrying in {wait_time}s", flush=True)
+                await asyncio.sleep(wait_time)
+                continue
+            raise
+    raise last_error
