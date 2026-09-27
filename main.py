@@ -1,17 +1,35 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from pydantic import BaseModel
+from dotenv import load_dotenv
 import httpx
 import json
+import os
 import chromadb
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
+load_dotenv()
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request, exc):
+    return JSONResponse(status_code=429, content={"error": "Too many requests. Please slow down."})
+
 chroma_client = chromadb.PersistentClient(path="./chroma_data")
 collection = chroma_client.get_or_create_collection(name="study_notes")
+
+AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_EMBED_MODEL = "text-embedding-004"
 
 
 @app.get("/")
@@ -30,23 +48,34 @@ def chunk_text(text: str, chunk_size: int = 500, overlap: int = 50) -> list[str]
     return chunks
 
 
-# ---------- Embeddings ----------
+# ---------- Embeddings (provider-aware) ----------
 async def get_embedding(text: str) -> list[float]:
-    async with httpx.AsyncClient(timeout=None) as client:
-        response = await client.post(
-            "http://localhost:11434/api/embeddings",
-            json={"model": "nomic-embed-text", "prompt": text},
-        )
-        return response.json()["embedding"]
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            if AI_PROVIDER == "gemini":
+                response = await client.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_EMBED_MODEL}:embedContent?key={GEMINI_API_KEY}",
+                    json={"content": {"parts": [{"text": text}]}},
+                )
+                response.raise_for_status()
+                return response.json()["embedding"]["values"]
+            else:
+                response = await client.post(
+                    "http://localhost:11434/api/embeddings",
+                    json={"model": "nomic-embed-text", "prompt": text},
+                )
+                response.raise_for_status()
+                return response.json()["embedding"]
+    except (httpx.HTTPError, httpx.TimeoutException, KeyError) as e:
+        raise RuntimeError(f"Embedding request failed: {e}")
 
 
-# ---------- Retrieval, now scoped to one session ----------
 async def retrieve_context(question: str, session_id: str, top_k: int = 3) -> list[str]:
     query_embedding = await get_embedding(question)
     results = collection.query(
         query_embeddings=[query_embedding],
         n_results=top_k,
-        where={"session_id": session_id},   # <-- the isolation boundary
+        where={"session_id": session_id},
     )
     return results["documents"][0] if results["documents"] else []
 
@@ -63,23 +92,49 @@ Task: {task}
 
 Question/Topic: {question}
 
-Important: Give ONLY the final answer. Do not think out loud, do not explain your reasoning process, and do not mention that you are reconsidering or changing your answer. Be direct and concise.
+Important: Give ONLY the final answer. Do not think out loud or narrate your reasoning process. Be direct and concise.
 
 Response:"""
 
 
-# ---------- Streaming generation ----------
-async def ollama_token_stream(prompt: str):
-    async with httpx.AsyncClient(timeout=None) as client:
-        async with client.stream(
-            "POST",
-            "http://localhost:11434/api/generate",
-            json={"model": "llama3.1:8b", "prompt": prompt, "stream": True},
-        ) as response:
-            async for line in response.aiter_lines():
-                if line:
-                    chunk = json.loads(line)
-                    yield {"data": chunk.get("response", "")}
+# ---------- Streaming generation (provider-aware) ----------
+async def ai_token_stream(prompt: str):
+    try:
+        if AI_PROVIDER == "gemini":
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:streamGenerateContent?alt=sse&key={GEMINI_API_KEY}",
+                    json={"contents": [{"parts": [{"text": prompt}]}]},
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            payload = line[len("data: "):].strip()
+                            if not payload or payload == "[DONE]":
+                                continue
+                            try:
+                                chunk = json.loads(payload)
+                                text = chunk["candidates"][0]["content"]["parts"][0]["text"]
+                                yield {"data": text}
+                            except (KeyError, IndexError, json.JSONDecodeError):
+                                continue
+        else:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                async with client.stream(
+                    "POST",
+                    "http://localhost:11434/api/generate",
+                    json={"model": "llama3.1:8b", "prompt": prompt, "stream": True},
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if line:
+                            chunk = json.loads(line)
+                            yield {"data": chunk.get("response", "")}
+    except (httpx.HTTPError, httpx.TimeoutException) as e:
+        yield {"data": "⚠️ Sorry, the AI service is currently unavailable. Please try again in a moment."}
+    except Exception as e:
+        yield {"data": "⚠️ Something went wrong while generating a response. Please try again."}
 
 
 async def no_notes_stream():
@@ -87,74 +142,80 @@ async def no_notes_stream():
 
 
 # ---------- Tool definitions ----------
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_flashcards",
-            "description": "Generate study flashcards (question/answer pairs) about a topic",
-            "parameters": {
-                "type": "object",
-                "properties": {"topic": {"type": "string", "description": "The topic to make flashcards about"}},
-                "required": ["topic"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_quiz",
-            "description": "Generate multiple-choice quiz questions about a topic",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "topic": {"type": "string", "description": "The topic to quiz on"},
-                    "num_questions": {"type": "integer", "description": "How many questions"},
-                },
-                "required": ["topic"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "summarize_notes",
-            "description": "Summarize the stored notes on a topic",
-            "parameters": {
-                "type": "object",
-                "properties": {"topic": {"type": "string", "description": "The topic to summarize"}},
-                "required": ["topic"],
-            },
-        },
-    },
+TOOLS_OLLAMA = [
+    {"type": "function", "function": {
+        "name": "generate_flashcards",
+        "description": "Generate study flashcards (question/answer pairs) about a topic",
+        "parameters": {"type": "object", "properties": {"topic": {"type": "string"}}, "required": ["topic"]},
+    }},
+    {"type": "function", "function": {
+        "name": "generate_quiz",
+        "description": "Generate multiple-choice quiz questions about a topic",
+        "parameters": {"type": "object", "properties": {
+            "topic": {"type": "string"}, "num_questions": {"type": "integer"}}, "required": ["topic"]},
+    }},
+    {"type": "function", "function": {
+        "name": "summarize_notes",
+        "description": "Summarize the stored notes on a topic",
+        "parameters": {"type": "object", "properties": {"topic": {"type": "string"}}, "required": ["topic"]},
+    }},
 ]
 
+GEMINI_TOOLS = [{"functionDeclarations": [
+    {"name": "generate_flashcards", "description": "Generate study flashcards (question/answer pairs) about a topic",
+     "parameters": {"type": "object", "properties": {"topic": {"type": "string"}}, "required": ["topic"]}},
+    {"name": "generate_quiz", "description": "Generate multiple-choice quiz questions about a topic",
+     "parameters": {"type": "object", "properties": {
+         "topic": {"type": "string"}, "num_questions": {"type": "integer"}}, "required": ["topic"]}},
+    {"name": "summarize_notes", "description": "Summarize the stored notes on a topic",
+     "parameters": {"type": "object", "properties": {"topic": {"type": "string"}}, "required": ["topic"]}},
+]}]
 
+ROUTING_INSTRUCTIONS = (
+    "You are a routing assistant. Only call a tool/function if the user EXPLICITLY asks for "
+    "flashcards, a quiz, or a summary (words like 'flashcards', 'quiz', 'summarize', 'summary'). "
+    "For direct questions like 'what is X' or 'explain X', do NOT call any tool."
+)
+
+
+# ---------- Tool decision (provider-aware, normalized return shape) ----------
 async def decide_tool(message: str):
-    async with httpx.AsyncClient(timeout=None) as client:
-        response = await client.post(
-            "http://localhost:11434/api/chat",
-            json={
-                "model": "llama3.1:8b",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a routing assistant. Only call a tool if the user "
-                            "EXPLICITLY asks for flashcards, a quiz, or a summary "
-                            "(using words like 'flashcards', 'quiz', 'summarize', 'summary'). "
-                            "For direct questions like 'what is X', 'explain X', or 'how does X work', "
-                            "do NOT call any tool — these should be answered normally."
-                        ),
-                    },
-                    {"role": "user", "content": message},
-                ],
-                "tools": TOOLS,
-                "stream": False,
-            },
-        )
-        data = response.json()
-        return data.get("message", {}).get("tool_calls")
+    """Returns None, or [{'function': {'name': str, 'arguments': dict}}] regardless of provider."""
+    if AI_PROVIDER == "gemini":
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent?key={GEMINI_API_KEY}",
+                json={
+                    "contents": [{"parts": [{"text": message}]}],
+                    "tools": GEMINI_TOOLS,
+                    "systemInstruction": {"parts": [{"text": ROUTING_INSTRUCTIONS}]},
+                },
+            )
+            data = response.json()
+            try:
+                for part in data["candidates"][0]["content"]["parts"]:
+                    if "functionCall" in part:
+                        fc = part["functionCall"]
+                        return [{"function": {"name": fc["name"], "arguments": fc.get("args", {})}}]
+            except (KeyError, IndexError):
+                pass
+            return None
+    else:
+        async with httpx.AsyncClient(timeout=None) as client:
+            response = await client.post(
+                "http://localhost:11434/api/chat",
+                json={
+                    "model": "llama3.1:8b",
+                    "messages": [
+                        {"role": "system", "content": ROUTING_INSTRUCTIONS},
+                        {"role": "user", "content": message},
+                    ],
+                    "tools": TOOLS_OLLAMA,
+                    "stream": False,
+                },
+            )
+            data = response.json()
+            return data.get("message", {}).get("tool_calls")
 
 
 # ---------- Schemas ----------
@@ -163,37 +224,34 @@ class NotesInput(BaseModel):
     session_id: str
 
 
-# ---------- Ingestion, now tagged with session_id ----------
 @app.post("/upload-notes")
-async def upload_notes(payload: NotesInput):
+@limiter.limit("10/minute")
+async def upload_notes(request: Request, payload: NotesInput):
     chunks = chunk_text(payload.text)
     ids, embeddings, metadatas = [], [], []
-    for i, chunk in enumerate(chunks):
-        embedding = await get_embedding(chunk)
-        # Unique ID per chunk, safe even across sessions
-        ids.append(f"{payload.session_id}-chunk-{collection.count() + i}")
-        embeddings.append(embedding)
-        metadatas.append({"session_id": payload.session_id})
+    try:
+        for i, chunk in enumerate(chunks):
+            embedding = await get_embedding(chunk)
+            ids.append(f"{payload.session_id}-chunk-{collection.count() + i}")
+            embeddings.append(embedding)
+            metadatas.append({"session_id": payload.session_id})
+    except RuntimeError:
+        return {"error": "Failed to process notes. Please try again in a moment."}
 
     collection.add(ids=ids, embeddings=embeddings, documents=chunks, metadatas=metadatas)
-
-    # Count only this session's chunks for an accurate per-user total
-    session_count = collection.get(where={"session_id": payload.session_id})
-    total_for_session = len(session_count["ids"])
-
-    return {"message": "Notes embedded and stored", "total_chunks_stored": total_for_session}
+    session_data = collection.get(where={"session_id": payload.session_id})
+    return {"message": "Notes embedded and stored", "total_chunks_stored": len(session_data["ids"])}
 
 
-# ---------- Clear notes, scoped to one session only ----------
 @app.delete("/clear-notes")
 def clear_notes(session_id: str):
     collection.delete(where={"session_id": session_id})
     return {"message": "Your notes have been cleared"}
 
 
-# ---------- Agentic chat endpoint, now session-aware ----------
 @app.get("/chat")
-async def chat(message: str, session_id: str):
+@limiter.limit("15/minute")
+async def chat(request: Request, message: str, session_id: str):
     tool_calls = await decide_tool(message)
 
     if tool_calls:
@@ -219,9 +277,8 @@ async def chat(message: str, session_id: str):
             instructions = None
 
         prompt = build_rag_prompt(topic, context_chunks, instructions)
-        return EventSourceResponse(ollama_token_stream(prompt))
+        return EventSourceResponse(ai_token_stream(prompt))
 
     context_chunks = await retrieve_context(message, session_id)
     prompt = build_rag_prompt(message, context_chunks)
-    return EventSourceResponse(ollama_token_stream(prompt))
-
+    return EventSourceResponse(ai_token_stream(prompt))
