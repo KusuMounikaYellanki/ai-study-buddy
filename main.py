@@ -29,7 +29,7 @@ collection = chroma_client.get_or_create_collection(name="study_notes")
 AI_PROVIDER = os.getenv("AI_PROVIDER", "ollama")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_EMBED_MODEL = "text-embedding-004"
+GEMINI_EMBED_MODEL = "gemini-embedding-001"
 
 
 @app.get("/")
