@@ -1388,10 +1388,135 @@
 .quiz-option.incorrect { border-color:#e57373; background:#fff3f3; }
 .quiz-feedback { margin-top:12px; padding:10px 12px; border-radius:10px; background:#f7f8fc; font-size:.76rem; line-height:1.45; }
 @media (max-width:700px) { .study-action-shell { padding:14px; } .flashcard { min-height:160px; } }
+
+  .send-btn.is-thinking { min-width: 104px; }
+  .typing-dots { display:inline-flex; gap:4px; align-items:center; }
+  .typing-dots span { width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.45; animation:studyBuddyPulse 1.2s infinite ease-in-out; }
+  .typing-dots span:nth-child(2) { animation-delay:.15s; }
+  .typing-dots span:nth-child(3) { animation-delay:.3s; }
+  @keyframes studyBuddyPulse { 0%,60%,100% { transform:translateY(0); opacity:.35; } 30% { transform:translateY(-3px); opacity:1; } }
+
+
+/* Full-page initial bootstrap loader */
+.app-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  background: rgba(248, 250, 252, 0.97);
+  backdrop-filter: blur(10px);
+}
+.app-loader[hidden] { display: none !important; }
+.app-loader-card {
+  width: min(360px, 100%);
+  text-align: center;
+  padding: 34px 28px;
+  border: 1px solid rgba(99, 102, 241, 0.14);
+  border-radius: 22px;
+  background: rgba(255,255,255,.96);
+  box-shadow: 0 20px 60px rgba(15,23,42,.12);
+}
+.app-loader-logo {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 17px;
+  background: rgba(99,102,241,.09);
+  font-size: 30px;
+}
+.app-loader-spinner {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 16px;
+  border: 3px solid rgba(99,102,241,.16);
+  border-top-color: #6366f1;
+  border-radius: 50%;
+  animation: appLoaderSpin .8s linear infinite;
+}
+.app-loader-card h2 { margin: 0 0 7px; }
+.app-loader-card p { margin: 0; opacity: .68; line-height: 1.5; }
+.app-loader-error {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(239,68,68,.08);
+  color: #b91c1c;
+  font-size: .9rem;
+  line-height: 1.4;
+}
+.app-loader-retry {
+  margin-top: 14px;
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg,#6366f1,#8b5cf6);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+@keyframes appLoaderSpin {
+  to { transform: rotate(360deg); }
+}
+
 </style>
+
+<style>
+.selected-file {
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.selected-file .selected-file-name {
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.remove-selected-file {
+  margin-left:auto;
+  flex:0 0 auto;
+  width:26px;
+  height:26px;
+  border:0;
+  border-radius:50%;
+  background:transparent;
+  color:inherit;
+  font-size:20px;
+  line-height:1;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+.remove-selected-file:hover {
+  background:rgba(239,68,68,.12);
+  color:#dc2626;
+}
+</style>
+
 </head>
 
 <body>
+
+<!-- Initial application loader -->
+<div id="appLoader" class="app-loader" hidden>
+  <div class="app-loader-card">
+    <div class="app-loader-logo" aria-hidden="true">📚</div>
+    <div class="app-loader-spinner" aria-hidden="true"></div>
+    <h2>AI Study Buddy</h2>
+    <p id="appLoaderText">Preparing your study workspace...</p>
+    <div id="appLoaderError" class="app-loader-error" hidden></div>
+    <button id="appLoaderRetry" class="app-loader-retry" type="button" hidden onclick="retryAppBootstrap()">Try again</button>
+  </div>
+</div>
+
 
 <div id="loginScreen">
   <div class="login-decoration" aria-hidden="true">
@@ -1609,27 +1734,80 @@ function authHeaders() {
   return { 'Authorization': `Bearer ${authToken}` };
 }
 
+function showAppLoader(message = 'Preparing your study workspace...') {
+  const loader = document.getElementById('appLoader');
+  const text = document.getElementById('appLoaderText');
+  const error = document.getElementById('appLoaderError');
+  const retry = document.getElementById('appLoaderRetry');
+  if (text) text.textContent = message;
+  if (error) { error.hidden = true; error.textContent = ''; }
+  if (retry) retry.hidden = true;
+  if (loader) loader.hidden = false;
+}
+
+function hideAppLoader() {
+  const loader = document.getElementById('appLoader');
+  if (loader) loader.hidden = true;
+}
+
+function showAppLoaderError(message) {
+  const loader = document.getElementById('appLoader');
+  const spinner = loader?.querySelector('.app-loader-spinner');
+  const text = document.getElementById('appLoaderText');
+  const error = document.getElementById('appLoaderError');
+  const retry = document.getElementById('appLoaderRetry');
+  if (spinner) spinner.style.display = 'none';
+  if (text) text.textContent = 'We could not load your study workspace.';
+  if (error) { error.textContent = message; error.hidden = false; }
+  if (retry) retry.hidden = false;
+  if (loader) loader.hidden = false;
+}
+
 async function enterApp() {
+  showAppLoader('Loading your chats and study workspace...');
+
+  // Keep the real page hidden until the required initial API call succeeds.
   document.getElementById('loginScreen').style.display = 'none';
-  document.getElementById('appRoot').style.display = 'block';
-  document.getElementById('heroGreeting').innerHTML = `What would you like to study, <span class="greeting-name">${escapeHtml(userName || 'there')}</span>?`;
-  currentChatId = null;
-  await loadChatList();
-  renderSources([]);
-  renderChatBox();
+  document.getElementById('appRoot').style.display = 'none';
+
+  try {
+    currentChatId = null;
+    await loadChatList();
+    renderSources([]);
+    renderChatBox();
+
+    document.getElementById('heroGreeting').innerHTML =
+      `What would you like to study, <span class="greeting-name">${escapeHtml(userName || 'there')}</span>?`;
+
+    document.getElementById('appRoot').style.display = 'block';
+    hideAppLoader();
+  } catch (err) {
+    console.error('Application bootstrap failed', err);
+    showAppLoaderError('Please check your connection and try again.');
+  }
+}
+
+async function retryAppBootstrap() {
+  const loader = document.getElementById('appLoader');
+  const spinner = loader?.querySelector('.app-loader-spinner');
+  if (spinner) spinner.style.display = '';
+  showAppLoader('Retrying your study workspace...');
+  await enterApp();
 }
 
 // ---------- Chat list (from backend now) ----------
 async function loadChatList() {
-  try {
-    const res = await fetch('/chats', { headers: authHeaders() });
-    if (res.status === 401) { logout(); return; }
-    const data = await res.json();
-    chats = data.chats;
-    renderChatList();
-  } catch (err) {
-    console.error('Failed to load chats', err);
+  const res = await fetch('/chats', { headers: authHeaders() });
+  if (res.status === 401) {
+    logout();
+    throw new Error('Authentication expired');
   }
+  if (!res.ok) {
+    throw new Error(`Failed to load chats (${res.status})`);
+  }
+  const data = await res.json();
+  chats = data.chats || [];
+  renderChatList();
 }
 
 function renderChatList() {
@@ -1809,8 +1987,16 @@ async function uploadNotes() {
     if (res.status === 401) { logout(); return; }
     if (!res.ok) throw new Error(data.detail || data.error || 'Upload failed');
     showStatus(`✓ ${sourceName} is ready. It will stay with this chat.`, 'success');
-    if (currentChatId) await loadChatSources(currentChatId);
-    else {
+    if (currentChatId) {
+      if (data.source) {
+        const exists = currentSources.some(s => s.source_id === data.source.source_id);
+        if (!exists) {
+          currentSources = [...currentSources, data.source];
+          renderSources(currentSources);
+        }
+      }
+      await loadChatSources(currentChatId);
+    } else {
       pendingSourceIds.push(data.source?.source_id);
       const pending = { source_id: data.source?.source_id, source_name: sourceName };
       currentSources = [...currentSources, pending];
@@ -1850,8 +2036,26 @@ function handleSelectedFile(file) {
     return;
   }
   selected.hidden = false;
-  selected.innerHTML = `<span>📄</span><strong>${escapeHtml(file.name)}</strong><span>${formatFileSize(file.size)}</span>`;
+  selected.innerHTML = `
+    <span>📄</span>
+    <strong class="selected-file-name">${escapeHtml(file.name)}</strong>
+    <span>${formatFileSize(file.size)}</span>
+    <button type="button" class="remove-selected-file" aria-label="Remove ${escapeHtml(file.name)}" title="Remove file" onclick="clearSelectedFile(event)">×</button>
+  `;
   uploadBtn.disabled = false;
+  showStatus('');
+}
+
+function clearSelectedFile(event) {
+  if (event) event.stopPropagation();
+  const input = document.getElementById('fileInput');
+  const selected = document.getElementById('selectedFile');
+  const uploadBtn = document.getElementById('fileUploadBtn');
+
+  input.value = '';
+  selected.hidden = true;
+  selected.innerHTML = '';
+  uploadBtn.disabled = true;
   showStatus('');
 }
 
@@ -1881,8 +2085,16 @@ async function uploadSelectedFile() {
     if (res.status === 401) { logout(); return; }
     if (!res.ok) throw new Error(data.detail || 'File upload failed');
     showStatus(`✓ ${file.name} is ready. It will stay with this chat.`, 'success');
-    if (currentChatId) await loadChatSources(currentChatId);
-    else {
+    if (currentChatId) {
+      if (data.source) {
+        const exists = currentSources.some(s => s.source_id === data.source.source_id);
+        if (!exists) {
+          currentSources = [...currentSources, data.source];
+          renderSources(currentSources);
+        }
+      }
+      await loadChatSources(currentChatId);
+    } else {
       pendingSourceIds.push(data.source?.source_id);
       currentSources = [...currentSources, data.source].filter(Boolean);
       renderSources(currentSources);
@@ -1890,9 +2102,14 @@ async function uploadSelectedFile() {
     input.value = '';
     document.getElementById('selectedFile').hidden = true;
   } catch (error) {
+    // Keep the selected file visible after a failed upload so the user
+    // can remove it with the × button or retry the upload.
     showStatus(`⚠️ ${error.message}`, 'error');
+    uploadBtn.disabled = false;
   } finally {
-    uploadBtn.disabled = true;
+    // On success the selected file is cleared above; on failure it remains
+    // available for retry/removal.
+    if (!input.files.length) uploadBtn.disabled = true;
   }
 }
 
@@ -1917,15 +2134,33 @@ dropzone.addEventListener('drop', e => {
 
 // ---------- Chat ----------
 async function sendMessage() {
-  if (!currentChatId) {
-    await createChat();
-  }
-
   const input = document.getElementById('chatInput');
   const sendBtn = document.getElementById('sendBtn');
   const message = input.value.trim();
-  if (!message) return;
+  if (!message || input.disabled) return;
 
+  // Do not create a chat just to return the "no notes" response.
+  // This keeps empty/no-notes attempts out of History.
+  if (!currentChatId && currentSources.length === 0 && pendingSourceIds.length === 0) {
+    const chatBox = document.getElementById('chatBox');
+    const welcome = chatBox.querySelector('.welcome');
+    if (welcome) welcome.remove();
+
+    const userBubble = document.createElement('div');
+    userBubble.className = 'bubble bubble-user';
+    userBubble.textContent = message;
+    chatBox.appendChild(userBubble);
+
+    const aiBubble = document.createElement('div');
+    aiBubble.className = 'bubble bubble-ai';
+    aiBubble.textContent = "You haven't uploaded any notes yet! Please paste some study notes above and click 'Upload Notes' first, then try again.";
+    chatBox.appendChild(aiBubble);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    input.value = '';
+    return;
+  }
+
+  // Show the loading state immediately, before any chat creation/network work.
   const chatBox = document.getElementById('chatBox');
   const welcome = chatBox.querySelector('.welcome');
   if (welcome) welcome.remove();
@@ -1937,63 +2172,87 @@ async function sendMessage() {
 
   const aiBubble = document.createElement('div');
   aiBubble.className = 'bubble bubble-ai';
-  aiBubble.innerHTML = `<span class="typing-dots"><span></span><span></span><span></span></span>`;
+  aiBubble.innerHTML = `<span class="typing-dots" aria-label="AI is thinking"><span></span><span></span><span></span></span>`;
   chatBox.appendChild(aiBubble);
 
   chatBox.scrollTop = chatBox.scrollHeight;
   input.value = '';
   input.disabled = true;
   sendBtn.disabled = true;
+  const originalSendText = sendBtn.textContent;
+  sendBtn.textContent = 'Thinking...';
+  sendBtn.classList.add('is-thinking');
 
-  let firstTokenReceived = false;
-  let fullResponse = '';
-  const thisChatId = currentChatId;
-
-  const url = `/chat?message=${encodeURIComponent(message)}&chat_id=${encodeURIComponent(thisChatId)}&token=${encodeURIComponent(authToken)}`;
-  const source = new EventSource(url);
-
-  source.onmessage = (event) => {
-    let parsed = null;
-    try { parsed = JSON.parse(event.data); } catch (_) {}
-    if (parsed && parsed.__study_action__) {
-      if (!firstTokenReceived) { aiBubble.remove(); firstTokenReceived = true; }
-      renderStudyAction(parsed, chatBox);
-      return;
+  try {
+    if (!currentChatId) {
+      await createChat();
+      // createChat() attaches pending uploaded material and loads it into the UI.
+      if (!currentSources.length) {
+        await loadChatSources(currentChatId);
+      }
     }
-    if (!firstTokenReceived) {
-      aiBubble.textContent = '';
-      firstTokenReceived = true;
-    }
-    const isNearBottom = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight < 100;
-    fullResponse += event.data;
-    aiBubble.textContent = fullResponse;
-    if (isNearBottom) chatBox.scrollTop = chatBox.scrollHeight;
-  };
 
-  let responseDone = false;
-  async function finishUp() {
-    if (responseDone) return;
-    responseDone = true;
-    source.close();
-    clearTimeout(idleTimer);
+    let firstTokenReceived = false;
+    let fullResponse = '';
+    const thisChatId = currentChatId;
+
+    const url = `/chat?message=${encodeURIComponent(message)}&chat_id=${encodeURIComponent(thisChatId)}&token=${encodeURIComponent(authToken)}`;
+    const source = new EventSource(url);
+
+    source.onmessage = (event) => {
+      let parsed = null;
+      try { parsed = JSON.parse(event.data); } catch (_) {}
+      if (parsed && parsed.__study_action__) {
+        if (!firstTokenReceived) { aiBubble.remove(); firstTokenReceived = true; }
+        renderStudyAction(parsed, chatBox);
+        return;
+      }
+      if (!firstTokenReceived) {
+        aiBubble.textContent = '';
+        firstTokenReceived = true;
+      }
+      const isNearBottom = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight < 100;
+      fullResponse += event.data;
+      aiBubble.textContent = fullResponse;
+      if (isNearBottom) chatBox.scrollTop = chatBox.scrollHeight;
+    };
+
+    let responseDone = false;
+    let idleTimer;
+
+    async function finishUp() {
+      if (responseDone) return;
+      responseDone = true;
+      source.close();
+      clearTimeout(idleTimer);
+      input.disabled = false;
+      sendBtn.disabled = false;
+      sendBtn.textContent = originalSendText;
+      sendBtn.classList.remove('is-thinking');
+      input.focus();
+      await loadChatList();
+      await loadChatSources(thisChatId);
+    }
+
+    source.onerror = () => {
+      if (!firstTokenReceived) {
+        aiBubble.textContent = "⚠️ Something went wrong. Please try again.";
+      }
+      finishUp();
+    };
+
+    source.addEventListener('message', () => {
+      clearTimeout(idleTimer);
+      idleTimer = setTimeout(finishUp, 2000);
+    });
+  } catch (error) {
+    aiBubble.textContent = `⚠️ ${error.message || 'Something went wrong. Please try again.'}`;
     input.disabled = false;
     sendBtn.disabled = false;
+    sendBtn.textContent = originalSendText;
+    sendBtn.classList.remove('is-thinking');
     input.focus();
-    await loadChatList();  // refreshes sidebar titles
   }
-
-  source.onerror = () => {
-    if (!firstTokenReceived) {
-      aiBubble.textContent = "⚠️ Something went wrong. Please try again.";
-    }
-    finishUp();
-  };
-
-  let idleTimer;
-  source.addEventListener('message', () => {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(finishUp, 2000);
-  });
 }
 
 function setQuestion(question) {
